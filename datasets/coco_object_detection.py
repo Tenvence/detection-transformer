@@ -32,14 +32,13 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         img = Image.open(os.path.join(self.root, self.coco.loadImgs(img_id)[0]['file_name'])).convert('RGB')
 
         bboxes = torch.tensor([obj['bbox'] for obj in target])  # (x, y, w, h)
-        bboxes[:, 2:] += bboxes[:, :2]  # (x, y, w, h) -> (x_min, y_min, x_max, y_max)
-
         category_ids = [obj['category_id'] for obj in target]
         labels = torch.tensor([self._map_category_id_to_label(category_id) for category_id in category_ids])
 
-        img, bboxes = self._transform(img, bboxes)
-
         bboxes, labels = self._pad_with_no_object(bboxes, labels)
+        bboxes[:, 2:] += bboxes[:, :2]  # (x, y, w, h) -> (x_min, y_min, x_max, y_max)
+
+        img, bboxes = self._transform(img, bboxes)
 
         return img, bboxes, labels
 
@@ -70,11 +69,9 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         scale = min(input_size_w / iw, input_size_h / ih)
 
         sh, sw = int(ih * scale), int(iw * scale)
-        print(img.size)
+
         img = func.resize(img, size=(sh, sw))
-        print(img.size)
         img = func.pad(img, padding=(0, 0, input_size_w - sw, input_size_h - sh), fill=(128, 128, 128))
-        print(img.size)
 
         bboxes *= scale
 
@@ -92,7 +89,8 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         _bboxes = torch.zeros((self.max_len, 4))
         _labels = torch.zeros(self.max_len)
 
-        _bboxes[:bboxes.shape[0], :] = bboxes
-        _labels[:labels.shape[0]] = labels
+        if bboxes.shape[0] != 0 and labels.shape[0] != 0:
+            _bboxes[:bboxes.shape[0], :] = bboxes
+            _labels[:labels.shape[0]] = labels
 
         return _bboxes, _labels
