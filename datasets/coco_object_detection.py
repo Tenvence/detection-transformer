@@ -77,7 +77,8 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
 
         return img, bboxes
 
-    def _pad(self, img, input_size_w, input_size_h):
+    @staticmethod
+    def _pad(img, input_size_w, input_size_h):
         iw, ih = img.size
         img = func.pad(img, padding=(0, 0, input_size_w - iw, input_size_h - ih), fill=(128, 128, 128))
         pad_mask = torch.ones((input_size_h, input_size_w)).bool()
