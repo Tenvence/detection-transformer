@@ -10,6 +10,7 @@ class SinePositionEmbedding(nn.Module):
         self.temperature = 10000
         self.scale = 2 * math.pi
 
+    @torch.no_grad()
     def forward(self, pad_mask):
         not_mask = ~pad_mask
 

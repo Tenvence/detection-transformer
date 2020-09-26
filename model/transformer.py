@@ -22,10 +22,10 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, src, query_embed, pos_embed):
+    def forward(self, src, pad_mask, pos_embed, query_embed):
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, pos_embed)
-        hs = self.decoder(tgt, memory, pos_embed, query_embed)
+        memory = self.encoder(src, pad_mask, pos_embed)
+        hs = self.decoder(tgt, memory, pad_mask, pos_embed, query_embed)
 
         return hs
 
@@ -35,9 +35,9 @@ class TransformerEncoder(nn.Module):
         super(TransformerEncoder, self).__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
 
-    def forward(self, src, pos):
+    def forward(self, src, pad_mask, pos):
         for layer in self.layers:
-            src = layer(src, pos)
+            src = layer(src, pad_mask, pos)
         return src
 
 
@@ -46,9 +46,9 @@ class TransformerDecoder(nn.Module):
         super(TransformerDecoder, self).__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
 
-    def forward(self, tgt, memory, pos, query_pos):
+    def forward(self, tgt, memory, pad_mask, pos, query_pos):
         for layer in self.layers:
-            tgt = layer(tgt, memory, pos, query_pos)
+            tgt = layer(tgt, memory, pad_mask, pos, query_pos)
         return tgt
 
 
@@ -64,8 +64,8 @@ class TransformerEncoderLayer(nn.Module):
         self.ffn_norm = nn.LayerNorm(d_model)
         self.ffn_dropout = nn.Dropout(dropout)
 
-    def forward(self, src, pos):
-        attention_out = self.self_attention_layer(query=src + pos, key=src + pos, value=src, need_weights=False)
+    def forward(self, src, pad_mask, pos):
+        attention_out = self.self_attention_layer(query=src + pos, key=src + pos, value=src, key_padding_mask=pad_mask, need_weights=False)
         src = src + self.attention_dropout(attention_out)
         src = self.attention_norm(src)
 
@@ -92,12 +92,20 @@ class TransformerDecoderLayer(nn.Module):
         self.ffn_norm = nn.LayerNorm(d_model)
         self.ffn_dropout = nn.Dropout(dropout)
 
-    def forward(self, tgt, memory, pos, query_pos):
-        self_attention_out = self.self_attention_layer(query=tgt + query_pos, key=tgt + query_pos, value=tgt, need_weights=False)
+    def forward(self, tgt, memory, pad_mask, pos, query_pos):
+        query = tgt + query_pos
+        key = tgt + query_pos
+        value = tgt
+
+        self_attention_out = self.self_attention_layer(query, key, value, need_weights=False)
         tgt = tgt + self.self_attention_dropout(self_attention_out)
         tgt = self.self_attention_norm(tgt)
 
-        encoder_decoder_attention_out = self.encoder_decoder_attention_layer(query=tgt + query_pos, key=memory + pos, value=memory, need_weights=False)
+        query = tgt + query_pos
+        key = memory + pos
+        value = memory
+
+        encoder_decoder_attention_out = self.encoder_decoder_attention_layer(query, key, value, key_padding_mask=pad_mask, need_weights=False)
         tgt = tgt + self.encoder_decoder_attention_dropout(encoder_decoder_attention_out)
         tgt = self.encoder_decoder_attention_norm(tgt)
 
