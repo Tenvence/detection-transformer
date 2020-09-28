@@ -24,8 +24,8 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
     def __init__(self, root, ann_file, max_len=100):
         super(CocoObjectDetection, self).__init__(root, ann_file)
         self.max_len = max_len
-        self.input_size_w = 1333
-        self.input_size_h = 800
+        self.input_size_w = 608
+        self.input_size_h = 608
 
     def __getitem__(self, index):
         img_id = self.ids[index]
@@ -41,7 +41,7 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         bboxes, labels = self._standard(bboxes, labels, iw, ih)
         bboxes, labels = self._pad_with_no_object(bboxes, labels)
 
-        img, pad_mask, bboxes = self._transform(img, bboxes, self.input_size_w, self.input_size_h)
+        img, pad_mask, bboxes = self._transform(img, bboxes, self.input_size_w, self.input_size_h)  # output bboxes: [x, y, w, h]
 
         return img, pad_mask, bboxes, labels
 
@@ -100,7 +100,7 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
             bboxes[:, 0::2].clamp(min=0, max=iw)
             bboxes[:, 1::2].clamp(min=0, max=ih)
 
-            keep = (bboxes[:, 3] > bboxes[:, 1]) and (bboxes[:, 2] > bboxes[:, 0])
+            keep = (bboxes[:, 3] > bboxes[:, 1]) & (bboxes[:, 2] > bboxes[:, 0])
             labels = labels[keep]
             bboxes = bboxes[keep]
         return bboxes, labels

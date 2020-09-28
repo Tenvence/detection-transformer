@@ -31,18 +31,16 @@ class Detr(nn.Module):
     def forward(self, x, pad_mask):
         x = self.backbone(x)
         x = self.proj_conv(x)
-        pad_mask = func.interpolate(pad_mask[None, ...].float(), size=x.shape[-2:]).bool().squeeze()  # [B, C, H, W]
 
-        # [B, C, H, W] -> [B, C, HW] -> [HW, B, C]
-        src = x.flatten(start_dim=2).permute(2, 0, 1)
-        pos_embed = self.pos_embed(pad_mask).flatten(start_dim=2).permute(2, 0, 1)
-
+        src = x.flatten(start_dim=2).permute(2, 0, 1)  # [B, C, H, W] -> [B, C, HW] -> [HW, B, C]
+        pad_mask = func.interpolate(pad_mask[None, ...].float(), size=x.shape[-2:]).bool().squeeze()  # [B, H, W]
+        pos_embed = self.pos_embed(pad_mask).flatten(start_dim=2).permute(2, 0, 1)  # [B, C, H, W] -> [B, C, HW] -> [HW, B, C]
         pad_mask = pad_mask.flatten(start_dim=1)  # [B, H, W] -> [B, HW]
         query_embed = self.query_embed.weight.unsqueeze(dim=1).repeat(1, x.shape[0], 1)  # [num_queries, d_model] -> [num_queries, 1, d_model] -> [num_queries, B, d_model]
 
         hs = self.transformer(src, pad_mask, pos_embed, query_embed).transpose(dim0=0, dim1=1)  # [num_queries, B, d_model] -> [B, num_queries, d_model]
 
-        cla_pred = self.class_pred_head(hs)  # [B, num_queries, d_model] -> [B, num_queries, num_classes]
-        box_pred = self.box_pred_head(hs).sigmoid()  # [B, num_queries, d_model] -> [B, num_queries, 4]
+        logist_pred = self.class_pred_head(hs)  # [B, num_queries, d_model] -> [B, num_queries, num_classes]
+        bboxes_pred = self.box_pred_head(hs).sigmoid()  # [B, num_queries, d_model] -> [B, num_queries, 4]
 
-        return cla_pred, box_pred
+        return logist_pred, bboxes_pred
