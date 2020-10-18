@@ -9,11 +9,13 @@ def bbox_iou(bboxes1, bboxes2, for_pair=True):
         lt = torch.max(bboxes1[..., :2], bboxes2[..., :2])  # [B, num_queries, 2]
         rb = torch.min(bboxes1[..., 2:], bboxes2[..., 2:])  # [B, num_queries, 2]
     else:
-        area1 = bbox_area(bboxes1)[:, :, None].repeat(1, 1, bboxes1.shape[1])  # [B, num_queries, num_queries]
-        area2 = bbox_area(bboxes2)[:, None, :].repeat(1, bboxes2.shape[1], 1)  # [B, num_queries, num_queries]
+        # [B, num_queries, num_queries]
+        area1 = bbox_area(bboxes1)[:, :, None].repeat(1, 1, bboxes1.shape[1])
+        area2 = bbox_area(bboxes2)[:, None, :].repeat(1, bboxes2.shape[1], 1)
 
-        lt = torch.max(bboxes1[:, :, None, :2].repeat(1, 1, bboxes1.shape[1], 1), bboxes2[:, None, :, :2].repeat(1, bboxes2.shape[1], 1, 1))  # [B, num_queries, num_queries, 2]
-        rb = torch.min(bboxes1[:, :, None, 2:].repeat(1, 1, bboxes1.shape[1], 1), bboxes2[:, None, :, 2:].repeat(1, bboxes2.shape[1], 1, 1))  # [B, num_queries, num_queries, 2]
+        # [B, num_queries, num_queries, 2], half() for amp
+        lt = torch.max(bboxes1[:, :, None, :2].repeat(1, 1, bboxes1.shape[1], 1), bboxes2[:, None, :, :2].repeat(1, bboxes2.shape[1], 1, 1))
+        rb = torch.min(bboxes1[:, :, None, 2:].repeat(1, 1, bboxes1.shape[1], 1), bboxes2[:, None, :, 2:].repeat(1, bboxes2.shape[1], 1, 1))
 
     wh = (rb - lt).clamp(min=0.)  # [B, num_queries, num_queries, 2]
     inter = wh[..., 0] * wh[..., 1]  # [B, num_queries, num_queries]

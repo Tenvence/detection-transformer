@@ -22,11 +22,13 @@ CLASSES = (
 
 
 class CocoObjectDetection(torchvision.datasets.CocoDetection):
-    def __init__(self, root, ann_file, max_len=100):
+    def __init__(self, root, ann_file, max_len=100, is_train=True):
         super(CocoObjectDetection, self).__init__(root, ann_file)
         self.max_len = max_len
         self.input_size_w = 608
         self.input_size_h = 608
+        self.is_train = is_train
+        self.cat_id_to_label_map = dict({cat_id: (i + 1) for i, cat_id in enumerate(self.coco.getCatIds(catNms=CLASSES))})  # +1 to pass "no object"
 
     def __getitem__(self, index):
         img_id = self.ids[index]
@@ -36,7 +38,7 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
 
         bboxes = torch.tensor([obj['bbox'] for obj in target])  # (x_min, y_min, w, h)
         category_ids = [obj['category_id'] for obj in target]
-        labels = torch.tensor([self._map_category_id_to_label(category_id) for category_id in category_ids])
+        labels = torch.tensor([self.cat_id_to_label_map[category_id] for category_id in category_ids])
 
         if bboxes.shape[0] == 0:
             bboxes = torch.tensor([[0., 0., 0., 0.]])
@@ -45,9 +47,6 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         bboxes, labels = self._pad_with_no_object(bboxes, labels)
 
         return img, pad_mask, bboxes, labels
-
-    def _map_category_id_to_label(self, category_id):
-        return dict({cat_id: i for i, cat_id in enumerate(self.coco.getCatIds(catNms=CLASSES))})[category_id]
 
     def _pad_with_no_object(self, bboxes, labels):
         _bboxes = torch.zeros((self.max_len, 4))
@@ -70,8 +69,11 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         bboxes[:, 1::3].clamp(min=0., max=img.size[1])
 
         img, bboxes = self._resize(img, bboxes, input_size_w, input_size_h)
-        img, bboxes = self._random_hflip(img, bboxes, p=0.5)
-        img = torchvision.transforms.ColorJitter(brightness=0.4, saturation=0.4, contrast=0.4)(img)
+
+        if self.is_train:
+            img, bboxes = self._random_hflip(img, bboxes, p=0.5)
+            img = torchvision.transforms.ColorJitter(brightness=0.4, saturation=0.4, contrast=0.4)(img)
+
         img, bboxes, pad_mask = self._pad(img, bboxes, input_size_w, input_size_h)
         bboxes = self._normalize_bboxes(bboxes, iw=img.size[0], ih=img.size[1])
 
@@ -105,8 +107,7 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
         img = func.hflip(img)
         w, _ = img.size
 
-        # (x_min, y_min, x_max, y_max) -> (-x_max + w, y_min, -x_min + w, y_max)
-        bboxes = bboxes[:, [2, 1, 0, 3]] * torch.tensor([-1., 1., -1., 1.]) + torch.tensor([w, 0., w, 0.])
+        bboxes = bboxes[:, [2, 1, 0, 3]] * torch.tensor([-1., 1., -1., 1.]) + torch.tensor([w, 0., w, 0.])  # (x_min, y_min, x_max, y_max) -> (-x_max + w, y_min, -x_min + w, y_max)
 
         return img, bboxes
 
@@ -125,7 +126,7 @@ class CocoObjectDetection(torchvision.datasets.CocoDetection):
 
         img = func.pad(img, padding=(pad_left, pad_top, pad_right, pad_bottom), fill=(0, 0, 0))
         pad_mask = torch.ones((input_size_h, input_size_w)).bool()
-        pad_mask[:ih, :iw] = False
+        pad_mask[pad_top:(input_size_h - pad_bottom), pad_left:(input_size_w - pad_right)] = False
 
         return img, bboxes, pad_mask
 

@@ -26,7 +26,7 @@ class SinePositionEmbedding(nn.Module):
         pos_embed_x = x_embed[..., None] / dim_t  # shape: [batch_size, h, w, dim_t]
         pos_embed_y = y_embed[..., None] / dim_t
 
-        # after "stack", each pair of sin and cos are in the same dimension. after "flatten",  sin and cos appear alternately
+        # after "stack", each pair of sin and cos are in the same dimension. after "flatten", sin and cos appear alternately
         pos_embed_x = torch.stack((pos_embed_x[:, :, :, 0::2].sin(), pos_embed_x[:, :, :, 1::2].cos()), dim=4).flatten(start_dim=3)
         pos_embed_y = torch.stack((pos_embed_y[:, :, :, 0::2].sin(), pos_embed_y[:, :, :, 1::2].cos()), dim=4).flatten(start_dim=3)
 

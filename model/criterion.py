@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.cuda.amp as amp
 import torch.nn.functional as func
 from scipy.optimize import linear_sum_assignment
 from utils.bbox_ops import convert_bbox_xywh_xyxy, bbox_giou
@@ -14,12 +15,12 @@ class SetCriterion(nn.Module):
         self.bbox_l1_loss_coef = bbox_l1_loss_coef
         self.giou_loss_coef = giou_loss_coef
 
+    # @amp.autocast()
     def forward(self, logist_pred, bboxes_pred, classes_gt, bboxes_gt):
-        matching_classes_gt, matching_bboxes_gt = self.matcher(logist_pred, bboxes_pred, classes_gt, bboxes_gt)
+        matching_classes_gt, matching_bboxes_gt = self.matcher(logist_pred, bboxes_pred, classes_gt, bboxes_gt)  # pred_idx & gt_idx & real_object_mask: [B, num_queries]
 
         label_loss = self.get_label_loss(logist_pred, matching_classes_gt)
         bbox_l1_loss, giou_loss = self.get_bbox_loss(bboxes_pred, matching_bboxes_gt, matching_classes_gt)
-
         loss = self.label_loss_coef * label_loss + self.bbox_l1_loss_coef * bbox_l1_loss + self.giou_loss_coef * giou_loss
 
         return loss
@@ -29,20 +30,24 @@ class SetCriterion(nn.Module):
         no_object_weight = torch.ones(num_classes).to(device=logist_pred.device)
         no_object_weight[0] = self.no_object_coef
 
-        ce_logist_pred = logist_pred.flatten(start_dim=0, end_dim=1)
-        ce_matching_classes_gt = matching_classes_gt.flatten(start_dim=0, end_dim=1)
-
-        label_loss = func.cross_entropy(input=ce_logist_pred, target=ce_matching_classes_gt, weight=no_object_weight)
+        label_loss = func.cross_entropy(input=logist_pred.transpose(dim0=1, dim1=2), target=matching_classes_gt.long(), weight=no_object_weight)
 
         return label_loss
 
     @staticmethod
     def get_bbox_loss(bboxes_pred, matching_bboxes_gt, matching_classes_gt):
-        # num_objects = matching_classes_gt.bool().float().sum(dim=-1)
+        objects_mask = matching_classes_gt.bool().float()  # [B, num_queries]
+        num_objects = objects_mask.sum(dim=-1)  # [B]
 
-        bbox_l1_loss = func.l1_loss(bboxes_pred, matching_bboxes_gt, reduction='none')  # .mean(dim=-1).sum(dim=-1) / (num_objects + 1e-7)
+        bbox_l1_loss = func.smooth_l1_loss(bboxes_pred, matching_bboxes_gt, reduction='none').mean(dim=-1)  # [B, num_queries]
+        bbox_l1_loss *= objects_mask
+        bbox_l1_loss = bbox_l1_loss.sum(dim=-1) / (num_objects + 1e-7)
+        bbox_l1_loss = bbox_l1_loss.mean()
+
         giou_loss = 1. - bbox_giou(bboxes_pred, matching_bboxes_gt, for_pair=True)
-        # giou_loss = giou_loss.sum(dim=-1) / (num_objects + 1e-7)
+        giou_loss *= objects_mask
+        giou_loss = giou_loss.sum(dim=-1) / (num_objects + 1e-7)
+        giou_loss = giou_loss.mean()
 
         return bbox_l1_loss.mean(), giou_loss.mean()
 
@@ -66,6 +71,7 @@ class HungarianMatcher(nn.Module):
         softmax_logist_pred = logist_pred.softmax(-1)
         classes_gt_one_hot = func.one_hot(classes_gt.long(), num_classes).float()  # [batch_size, num_queries, num_classes]
 
+        # 1st dimension for batch size; 2nd dimension for prediction; 3rd dimension for ground-truth
         cost_label = -torch.bmm(softmax_logist_pred, classes_gt_one_hot.transpose(dim0=1, dim1=2))  # [batch_size, num_queries, num_queries]
         cost_bbox = torch.cdist(bboxes_pred, bboxes_gt, p=1)  # [batch_size, num_queries, num_queries]
         cost_giou = -bbox_giou(convert_bbox_xywh_xyxy(bboxes_pred), convert_bbox_xywh_xyxy(bboxes_gt), for_pair=False)  # [batch_size, num_queries, num_queries]
@@ -77,6 +83,7 @@ class HungarianMatcher(nn.Module):
 
         matching_classes_gt = torch.zeros((batch_size, num_queries))  # same shape as "classes_gt"
         matching_bboxes_gt = torch.zeros((batch_size, num_queries, 4))  # same shape as "bboxes_gt"
+        # matching_bboxes_gt = torch.zeros((batch_size, num_queries, 4)).half()  # same shape as "bboxes_gt"
 
         for i in range(batch_size):
             # "pred_idx" is the same shape as "gt_idx", whose length is "real_object_numbers[i]"
