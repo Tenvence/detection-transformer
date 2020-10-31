@@ -65,7 +65,8 @@ class TransformerEncoderLayer(nn.Module):
         self.ffn_dropout = nn.Dropout(dropout)
 
     def forward(self, src, pad_mask, pos):
-        attention_out = self.self_attention_layer(query=src + pos, key=src + pos, value=src, key_padding_mask=pad_mask)[0]
+        # attention_out = self.self_attention_layer(query=src + pos, key=src + pos, value=src, key_padding_mask=pad_mask)[0]
+        attention_out = self.self_attention_layer(query=src + pos, key=src + pos, value=src)[0]
         src = src + self.attention_dropout(attention_out)
         src = self.attention_norm(src)
 
@@ -101,7 +102,8 @@ class TransformerDecoderLayer(nn.Module):
         key = memory + pos
         value = memory
 
-        encoder_decoder_attention_out = self.encoder_decoder_attention_layer(query, key, value, key_padding_mask=pad_mask)[0]
+        # encoder_decoder_attention_out = self.encoder_decoder_attention_layer(query, key, value, key_padding_mask=pad_mask)[0]
+        encoder_decoder_attention_out = self.encoder_decoder_attention_layer(query, key, value)[0]
         tgt = tgt + self.encoder_decoder_attention_dropout(encoder_decoder_attention_out)
         tgt = self.encoder_decoder_attention_norm(tgt)
 

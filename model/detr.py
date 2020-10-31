@@ -1,4 +1,3 @@
-import torch.cuda.amp as amp
 import torch.nn as nn
 import torch.nn.functional as func
 
@@ -12,7 +11,6 @@ class Detr(nn.Module):
         self.backbone = backbone
         self.transformer = transformer
         self.proj_conv = nn.Conv2d(in_channels=num_channels, out_channels=transformer.d_model, kernel_size=1)
-        # self.proj_bn = nn.BatchNorm2d(num_features=transformer.d_model)
 
         self.class_pred_head = nn.Linear(in_features=transformer.d_model, out_features=num_classes)
         self.bbox_pred_head = nn.Sequential(
@@ -30,11 +28,9 @@ class Detr(nn.Module):
         self.num_classes = num_classes
         self.num_queries = num_queries
 
-    # @amp.autocast()
     def forward(self, x, pad_mask):
         x = self.backbone(x)
         x = self.proj_conv(x)
-        # x = self.proj_bn(x)
 
         src = x.flatten(start_dim=2).permute(2, 0, 1)  # [B, C, H, W] -> [B, C, HW] -> [HW, B, C]
         pad_mask = func.interpolate(pad_mask[:, None, :, :].float(), size=x.shape[-2:]).bool().squeeze()  # [B, H, W]
